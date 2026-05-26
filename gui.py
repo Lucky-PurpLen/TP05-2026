@@ -50,6 +50,26 @@ def create_app():
         count = sum(1 for var in ingredient_vars.values() if var.get() == 1)
         lbl_counter.config(text=f"Выбрано ингредиентов: {count}")
 
+    def show_result_window(recipes):
+        top = tk.Toplevel(root)
+        top.title("Найденные рецепты")
+        top.geometry("600x500")
+        top.configure(bg="#f4f4f4")
+
+        lbl_title = tk.Label(top, text="Вот что можно приготовить:", font=("Arial",14,"bold"), bg="#f4f4f4")
+        lbl_title.pack(pady=10)
+
+        txt_result = tk.Text(top, font=("Arial",12), wrap="word", bg="#ffffff", pady=15, padx=15)
+        txt_result.pack(expand=True, fill="both", pady=10, padx=20)
+        txt_result.tag_config("header", font=("Arial", 14, "bold"), foreground="#4CAF50")
+
+        for r in recipes:
+            txt_result.insert(tk.END, f" {r['title']}\n", "header")
+            txt_result.insert(tk.END, f"Как готовить:\n{r['instructions']}\n")
+            txt_result.insert(tk.END, "-"*40 + "\n\n")
+
+        txt_result.config(state="disabled")
+
     def find_recipes():
         selected_ingredients = [ing for ing, var in ingredient_vars.items() if var.get() == 1]
 
@@ -65,11 +85,10 @@ def create_app():
                 recipe_ingredients.extend(cat_ings)
 
             if set(recipe_ingredients).issubset(set(selected_ingredients)):
-                found_recipes.append(recipe["title"])
+                found_recipes.append(recipe)
 
         if found_recipes:
-            result_text = "\n".join(found_recipes)
-            messagebox.showinfo("Найденные рецепты:", result_text)
+            show_result_window(found_recipes)
         else:
             messagebox.showinfo("Нет совпадений", "Из этих продуктов не получится собрать полный рецепт. \nДобавьте еще ингредиентов!")
 
