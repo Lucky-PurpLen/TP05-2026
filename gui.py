@@ -1,12 +1,13 @@
 import tkinter as tk
+from main import load_recipes
 
 def create_app():
     root = tk.Tk()
     root.title("Что приготовить?")
-
     root.geometry("1280x720")
-
     root.resizable(False,False)
+
+    all_recipes = load_recipes()
 
     left_panel = tk.Frame(root, width=320, bg="#f0f0f0", relief="sunken", borderwidth=1)
     left_panel.pack(side="left", fill="y")
@@ -27,34 +28,50 @@ def create_app():
         "Специи и травы", "Соусы и масла", "Хлебобулочные", "Разное"
     ]
     for cat in categories:
-        btn = tk.Button(left_panel, text=cat, font=("Arial",11), bg="#e0e0e0", anchor="w", relief="flat")
+        btn = tk.Button(left_panel, text=cat, font=("Arial",11), bg="#e0e0e0", anchor="w", relief="flat", command=lambda c=cat: update_grid(c))
         btn.pack(fill="x",padx=10,pady=2)
 
     lbl_category_title = tk.Label(central_panel, text="Ингредиенты: Мясо и птица", bg="#ffffff", font=("Arial", 16, "bold"))
     lbl_category_title.pack(pady=20)
     grid_frame = tk.Frame(central_panel, bg="#ffffff")
     grid_frame.pack(fill="both", expand=True, padx=40)
-    sample_ingredients = [
-        "Куриное филе", "Говядина", "Свинина", "Индейка",
-        "Фарш мясной", "Бекон", "Утка", "Колбаса", "Сосиски",
-        "Печень", "Фарш куриный", "Сало"
-    ]
-    row_num = 0
-    col_num = 0
-    for ingredient in sample_ingredients:
-        var = tk.IntVar()
-        chk = tk.Checkbutton(grid_frame, text=ingredient, variable=var, bg="#ffffff", font=("Arial", 11))
-        chk.grid(row=row_num, column=col_num, padx=15, pady=10, sticky="w")
-        col_num += 1
-        if col_num > 2:
-            col_num = 0
-            row_num += 1
+
+    def get_ingredients_by_category(category_name):
+        ingredients_set = set()
+
+        for recipe in all_recipes:
+            if category_name in recipe["ingredients"]:
+                ingredients_set.update(recipe["ingredients"][category_name])
+        return sorted(list(ingredients_set))
+    current_category = categories[0]
+    ingredients_to_show = get_ingredients_by_category(current_category)
+
+    def update_grid(category_name):
+        lbl_category_title.config(text=f"Ингредиенты: {category_name}")
+
+        for widget in grid_frame.winfo_children():
+            widget.destroy()
+
+        ingredients = get_ingredients_by_category(category_name)
+
+        row_num = 0
+        col_num = 0
+        for ingredient in ingredients:
+            var = tk.IntVar()
+            chk = tk.Checkbutton(grid_frame, text=ingredient, variable=var,bg="#ffffff", font=("Arial",11))
+            chk.grid(row=row_num, column=col_num, padx=15, pady=10, sticky="w")
+
+            col_num += 1
+            if col_num > 2:
+                col_num = 0
+                row_num += 1
 
     lbl_counter = tk.Label(bottom_panel, text="Выбрано ингредиентов: 0", bg="#e0e0e0", font=("Arial", 12, "bold"))
     lbl_counter.pack(side="left", padx=20)
     btn_search = tk.Button(bottom_panel, text="Найти рецепты", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", width=15)
     btn_search.pack(side="right", padx=20)
 
+    update_grid(categories[0])
     root.mainloop()
 
 if __name__ == "__main__":
