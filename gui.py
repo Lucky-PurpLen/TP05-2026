@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 from main import load_recipes
 
 def create_app():
@@ -43,6 +44,35 @@ def create_app():
             if category_name in recipe["ingredients"]:
                 ingredients_set.update(recipe["ingredients"][category_name])
         return sorted(list(ingredients_set))
+
+    ingredient_vars = {}
+    def update_counter():
+        count = sum(1 for var in ingredient_vars.values() if var.get() == 1)
+        lbl_counter.config(text=f"Выбрано ингредиентов: {count}")
+
+    def find_recipes():
+        selected_ingredients = [ing for ing, var in ingredient_vars.items() if var.get() == 1]
+
+        if not selected_ingredients:
+            messagebox.showinfo("Внимание", "Пожалуйста, выберите хотя бы один продукт!")
+            return
+
+        found_recipes = []
+
+        for recipe in all_recipes:
+            recipe_ingredients = []
+            for cat_ings in recipe["ingredients"].values():
+                recipe_ingredients.extend(cat_ings)
+
+            if set(recipe_ingredients).issubset(set(selected_ingredients)):
+                found_recipes.append(recipe["title"])
+
+        if found_recipes:
+            result_text = "\n".join(found_recipes)
+            messagebox.showinfo("Найденные рецепты:", result_text)
+        else:
+            messagebox.showinfo("Нет совпадений", "Из этих продуктов не получится собрать полный рецепт. \nДобавьте еще ингредиентов!")
+
     current_category = categories[0]
     ingredients_to_show = get_ingredients_by_category(current_category)
 
@@ -57,8 +87,12 @@ def create_app():
         row_num = 0
         col_num = 0
         for ingredient in ingredients:
-            var = tk.IntVar()
-            chk = tk.Checkbutton(grid_frame, text=ingredient, variable=var,bg="#ffffff", font=("Arial",11))
+            if ingredient not in ingredient_vars:
+                ingredient_vars[ingredient] = tk.IntVar()
+
+            var = ingredient_vars[ingredient]
+
+            chk = tk.Checkbutton(grid_frame, text=ingredient, variable=var, bg="#ffffff", font=("Arial", 11), command=update_counter)
             chk.grid(row=row_num, column=col_num, padx=15, pady=10, sticky="w")
 
             col_num += 1
@@ -68,7 +102,7 @@ def create_app():
 
     lbl_counter = tk.Label(bottom_panel, text="Выбрано ингредиентов: 0", bg="#e0e0e0", font=("Arial", 12, "bold"))
     lbl_counter.pack(side="left", padx=20)
-    btn_search = tk.Button(bottom_panel, text="Найти рецепты", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", width=15)
+    btn_search = tk.Button(bottom_panel, text="Найти рецепты", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", width=15, command=find_recipes)
     btn_search.pack(side="right", padx=20)
 
     update_grid(categories[0])
