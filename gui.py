@@ -42,7 +42,8 @@ def create_app():
 
         for recipe in all_recipes:
             if category_name in recipe["ingredients"]:
-                ingredients_set.update(recipe["ingredients"][category_name])
+                for ing in recipe["ingredients"][category_name]:
+                    ingredients_set.add(ing["name"])
         return sorted(list(ingredients_set))
 
     ingredient_vars = {}
@@ -50,25 +51,58 @@ def create_app():
         count = sum(1 for var in ingredient_vars.values() if var.get() == 1)
         lbl_counter.config(text=f"Выбрано ингредиентов: {count}")
 
-    def show_result_window(recipes):
+    def show_results_window(recipes):
         top = tk.Toplevel(root)
         top.title("Найденные рецепты")
-        top.geometry("600x500")
+        top.geometry("650x600")
         top.configure(bg="#f4f4f4")
 
-        lbl_title = tk.Label(top, text="Вот что можно приготовить:", font=("Arial",14,"bold"), bg="#f4f4f4")
-        lbl_title.pack(pady=10)
+        control_frame = tk.Frame(top, bg="#f4f4f4")
+        control_frame.pack(pady=15, fill="x", padx=20)
 
-        txt_result = tk.Text(top, font=("Arial",12), wrap="word", bg="#ffffff", pady=15, padx=15)
-        txt_result.pack(expand=True, fill="both", pady=10, padx=20)
+        lbl_portions = tk.Label(control_frame, text="Количество порций:", font=("Arial", 12, "bold"), bg="#f4f4f4")
+        lbl_portions.pack(side="left")
+
+        portion_var = tk.IntVar(value=1)
+
+        txt_result = tk.Text(top, font=("Arial", 12), wrap="word", bg="#ffffff", padx=15, pady=15)
+        txt_result.pack(expand=True, fill="both", padx=20, pady=10)
+
         txt_result.tag_config("header", font=("Arial", 14, "bold"), foreground="#4CAF50")
+        txt_result.tag_config("bold", font=("Arial", 12, "bold"))
 
-        for r in recipes:
-            txt_result.insert(tk.END, f" {r['title']}\n", "header")
-            txt_result.insert(tk.END, f"Как готовить:\n{r['instructions']}\n")
-            txt_result.insert(tk.END, "-"*40 + "\n\n")
+        def render_recipes():
+            txt_result.config(state="normal")
+            txt_result.delete("1.0", tk.END)
 
-        txt_result.config(state="disabled")
+            try:
+                multiplier = int(portion_var.get())
+                if multiplier < 1: multiplier = 1
+            except ValueError:
+                multiplier = 1
+
+            for r in recipes:
+                txt_result.insert(tk.END, f"🍳 {r['title']}\n", "header")
+                txt_result.insert(tk.END, "Что понадобится:\n", "bold")
+
+                for cat_name, items in r["ingredients"].items():
+                    for item in items:
+                        calc_amount = item['amount'] * multiplier
+                        if calc_amount == int(calc_amount):
+                            calc_amount = int(calc_amount)
+
+                        txt_result.insert(tk.END, f" • {item['name']}: {calc_amount} {item['unit']}\n")
+
+                txt_result.insert(tk.END, f"\nКак готовить:\n{r['instructions']}\n")
+                txt_result.insert(tk.END, "-"*40 + "\n\n")
+
+            txt_result.config(state="disabled")
+
+        spin_portions = tk.Spinbox(control_frame, from_=1, to=20, textvariable=portion_var,
+                                   font=("Arial", 12), width=5, command=render_recipes)
+        spin_portions.pack(side="left", padx=10)
+
+        render_recipes()
 
     def find_recipes():
         selected_ingredients = [ing for ing, var in ingredient_vars.items() if var.get() == 1]
@@ -82,13 +116,14 @@ def create_app():
         for recipe in all_recipes:
             recipe_ingredients = []
             for cat_ings in recipe["ingredients"].values():
-                recipe_ingredients.extend(cat_ings)
+                for ing in cat_ings:
+                    recipe_ingredients.append(ing["name"])
 
             if set(recipe_ingredients).issubset(set(selected_ingredients)):
                 found_recipes.append(recipe)
 
         if found_recipes:
-            show_result_window(found_recipes)
+            show_results_window(found_recipes)
         else:
             messagebox.showinfo("Нет совпадений", "Из этих продуктов не получится собрать полный рецепт. \nДобавьте еще ингредиентов!")
 
