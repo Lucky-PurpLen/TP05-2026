@@ -3,6 +3,7 @@ from tkinter import messagebox
 from tkinter import ttk
 from main import load_recipes
 import json
+from PIL import Image, ImageTk
 
 def create_app():
     root = tk.Tk()
@@ -90,6 +91,10 @@ def create_app():
             txt_result.config(state="normal")
             txt_result.delete("1.0", tk.END)
 
+            # ВАЖНО: Создаем список для хранения ссылок на картинки,
+            # чтобы сборщик мусора Python их не удалил
+            txt_result.image_list = []
+
             try:
                 multiplier = int(portion_var.get())
                 if multiplier < 1: multiplier = 1
@@ -97,11 +102,32 @@ def create_app():
                 multiplier = 1
 
             for r in recipes:
+                # 1. Заголовок
                 txt_result.insert(tk.END, f"🍳 {r['title']}\n", "header")
 
-                # --- УМНЫЙ ПОИСК: Вывод подсказки о покупках ---
+                # --- НОВЫЙ БЛОК: ДОБАВЛЕНИЕ КАРТИНКИ ---
+                img_path = r.get("image", "")
+                if img_path: # Если путь к картинке указан в JSON
+                    try:
+                        # Открываем картинку
+                        img = Image.open(img_path)
+                        # Пропорционально сжимаем её, чтобы она не была огромной (максимум 300x300 пикселей)
+                        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+
+                        # Преобразуем в формат, понятный Tkinter
+                        photo = ImageTk.PhotoImage(img)
+                        txt_result.image_list.append(photo) # Сохраняем от удаления
+
+                        # Вставляем картинку прямо в текстовое поле
+                        txt_result.image_create(tk.END, image=photo)
+                        txt_result.insert(tk.END, "\n\n")
+                    except Exception as e:
+                        print(f"Ошибка загрузки картинки {img_path}: {e}")
+                # ----------------------------------------
+
+                # 2. Умный поиск: Вывод подсказки о покупках
                 missing = r.get("missing_details", [])
-                if missing: # Если список недостающего не пустой
+                if missing:
                     txt_result.insert(tk.END, "⚠️ Почти готово! Осталось докупить:\n", "warning")
                     for m in missing:
                         calc_m = round(m['amount'] * multiplier, 1)
@@ -109,8 +135,8 @@ def create_app():
                         txt_result.insert(tk.END, f"  • {m['name']} — {calc_m} {m['unit']}\n", "warning_text")
                     txt_result.insert(tk.END, "\n")
 
+                # 3. Основные ингредиенты
                 txt_result.insert(tk.END, "Что понадобится (всего):\n", "bold")
-
                 for cat_name, items in r["ingredients"].items():
                     for item in items:
                         calc_amount = round(item['amount'] * multiplier, 1)
@@ -118,6 +144,7 @@ def create_app():
                             calc_amount = int(calc_amount)
                         txt_result.insert(tk.END, f" • {item['name']}: {calc_amount} {item['unit']}\n")
 
+                # 4. Инструкция
                 txt_result.insert(tk.END, f"\nКак готовить:\n{r['instructions']}\n")
                 txt_result.insert(tk.END, "-"*40 + "\n\n")
 
