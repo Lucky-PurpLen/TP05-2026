@@ -53,10 +53,20 @@ def create_app():
         count = sum(1 for var in ingredient_vars.values() if var.get() == 1)
         lbl_counter.config(text=f"Выбрано ингредиентов: {count}")
 
+    # Функция для сброса всех выбранных ингредиентов
+    def reset_all():
+        # Пробегаемся по всем переменным в нашей "памяти" и устанавливаем их в 0 (снимаем галочку)
+        for var in ingredient_vars.values():
+            var.set(0)
+
+        # Принудительно вызываем обновление счетчика на экране
+        update_counter()
+
+    # Функция для отрисовки окна с результатами и калькулятором
     def show_results_window(recipes):
         top = tk.Toplevel(root)
         top.title("Найденные рецепты")
-        top.geometry("650x600")
+        top.geometry("650x650") # Сделали окно чуть выше
         top.configure(bg="#f4f4f4")
 
         control_frame = tk.Frame(top, bg="#f4f4f4")
@@ -65,34 +75,47 @@ def create_app():
         lbl_portions = tk.Label(control_frame, text="Количество порций:", font=("Arial", 12, "bold"), bg="#f4f4f4")
         lbl_portions.pack(side="left")
 
-        portion_var = tk.IntVar(value=1)
+        portion_var = tk.StringVar(value="1")
 
         txt_result = tk.Text(top, font=("Arial", 12), wrap="word", bg="#ffffff", padx=15, pady=15)
         txt_result.pack(expand=True, fill="both", padx=20, pady=10)
 
+        # Настраиваем визуальные стили, добавили оранжевый для предупреждений
         txt_result.tag_config("header", font=("Arial", 14, "bold"), foreground="#4CAF50")
         txt_result.tag_config("bold", font=("Arial", 12, "bold"))
+        txt_result.tag_config("warning", font=("Arial", 11, "bold"), foreground="#E65100") # Темно-оранжевый
+        txt_result.tag_config("warning_text", font=("Arial", 11, "italic"), foreground="#E65100")
 
-        def render_recipes():
+        def render_recipes(*args):
             txt_result.config(state="normal")
             txt_result.delete("1.0", tk.END)
 
             try:
                 multiplier = int(portion_var.get())
                 if multiplier < 1: multiplier = 1
-            except ValueError:
+            except Exception:
                 multiplier = 1
 
             for r in recipes:
                 txt_result.insert(tk.END, f"🍳 {r['title']}\n", "header")
-                txt_result.insert(tk.END, "Что понадобится:\n", "bold")
+
+                # --- УМНЫЙ ПОИСК: Вывод подсказки о покупках ---
+                missing = r.get("missing_details", [])
+                if missing: # Если список недостающего не пустой
+                    txt_result.insert(tk.END, "⚠️ Почти готово! Осталось докупить:\n", "warning")
+                    for m in missing:
+                        calc_m = round(m['amount'] * multiplier, 1)
+                        if calc_m == int(calc_m): calc_m = int(calc_m)
+                        txt_result.insert(tk.END, f"  • {m['name']} — {calc_m} {m['unit']}\n", "warning_text")
+                    txt_result.insert(tk.END, "\n")
+
+                txt_result.insert(tk.END, "Что понадобится (всего):\n", "bold")
 
                 for cat_name, items in r["ingredients"].items():
                     for item in items:
-                        calc_amount = item['amount'] * multiplier
+                        calc_amount = round(item['amount'] * multiplier, 1)
                         if calc_amount == int(calc_amount):
                             calc_amount = int(calc_amount)
-
                         txt_result.insert(tk.END, f" • {item['name']}: {calc_amount} {item['unit']}\n")
 
                 txt_result.insert(tk.END, f"\nКак готовить:\n{r['instructions']}\n")
@@ -100,13 +123,12 @@ def create_app():
 
             txt_result.config(state="disabled")
 
-        spin_portions = tk.Spinbox(control_frame, from_=1, to=20, textvariable=portion_var,
-                                   font=("Arial", 12), width=5, command=render_recipes)
+        spin_portions = tk.Spinbox(control_frame, from_=1, to=20, textvariable=portion_var, font=("Arial", 12), width=5)
         spin_portions.pack(side="left", padx=10)
 
+        portion_var.trace_add("write", render_recipes)
         render_recipes()
 
-    # Функция открытия окна добавления нового рецепта
     def open_add_recipe_window():
         add_win = tk.Toplevel(root)
         add_win.title("Добавить новый рецепт")
@@ -282,28 +304,98 @@ def create_app():
         btn_save = tk.Button(add_win, text="Сохранить рецепт", font=("Arial", 12, "bold"), bg="#2196F3", fg="white", command=save_new_recipe)
         btn_save.pack(pady=20, fill="x", padx=20)
 
-    def find_recipes():
-        selected_ingredients = [ing for ing, var in ingredient_vars.items() if var.get() == 1]
+    # Функция открытия окна удаления рецепта
+    def open_delete_recipe_window():
+        # Защита: если база пуста, даже не открываем окно
+        if not all_recipes:
+            messagebox.showinfo("Пусто", "База рецептов пуста. Удалять нечего!")
+            return
 
-        if not selected_ingredients:
+        del_win = tk.Toplevel(root)
+        del_win.title("Удалить рецепт")
+        del_win.geometry("400x250")
+        del_win.configure(bg="#f4f4f4")
+        del_win.grab_set() # Блокируем главное окно
+
+        tk.Label(del_win, text="Выберите рецепт для удаления:", font=("Arial", 11, "bold"), bg="#f4f4f4").pack(pady=(20, 10))
+
+        # Собираем список названий всех рецептов
+        recipe_titles = [r["title"] for r in all_recipes]
+
+        # Создаем выпадающий список
+        cb_recipes = ttk.Combobox(del_win, values=recipe_titles, state="readonly", font=("Arial", 11), width=30)
+        cb_recipes.pack(pady=10)
+        cb_recipes.current(0) # Выбираем первый по умолчанию
+
+        # Логика физического удаления
+        def delete_selected():
+            selected_title = cb_recipes.get()
+
+            # Всплывающее окно подтверждения (защита от случайных кликов)
+            confirm = messagebox.askyesno("Подтверждение", f"Вы уверены, что хотите удалить рецепт «{selected_title}»?\nЭто действие нельзя отменить.")
+
+            if confirm:
+                # 1. Ищем рецепт в оперативной памяти и удаляем его из списка
+                for i, recipe in enumerate(all_recipes):
+                    if recipe["title"] == selected_title:
+                        del all_recipes[i]
+                        break # Выходим из цикла, так как уже нашли и удалили
+
+                # 2. Перезаписываем файл data.json обновленным списком
+                try:
+                    with open("data.json", "w", encoding="utf-8") as f:
+                        json.dump(all_recipes, f, ensure_ascii=False, indent=4)
+
+                    messagebox.showinfo("Успех", "Рецепт успешно удален!")
+
+                    # 3. Обновляем главный экран (чтобы исчезли ингредиенты удаленного блюда)
+                    update_grid(lbl_category_title.cget("text").replace("Ингредиенты: ", ""))
+                    del_win.destroy() # Закрываем окно
+                except Exception as e:
+                    messagebox.showerror("Ошибка", f"Не удалось обновить файл: {e}")
+
+        # Красная кнопка удаления
+        btn_confirm_del = tk.Button(del_win, text="Удалить безвозвратно", font=("Arial", 11, "bold"),
+                                    bg="#F44336", fg="white", command=delete_selected)
+        btn_confirm_del.pack(pady=20)
+
+    # УМНЫЙ ПОИСК: Функция поиска рецептов с допущением нехватки продуктов
+    def find_recipes():
+        # Собираем названия (имена) выбранных продуктов
+        selected_names = set([ing for ing, var in ingredient_vars.items() if var.get() == 1])
+
+        if not selected_names:
             messagebox.showinfo("Внимание", "Пожалуйста, выберите хотя бы один продукт!")
             return
 
         found_recipes = []
 
         for recipe in all_recipes:
-            recipe_ingredients = []
+            # Собираем все ингредиенты рецепта в один плоский список
+            required_items = []
             for cat_ings in recipe["ingredients"].values():
-                for ing in cat_ings:
-                    recipe_ingredients.append(ing["name"])
+                required_items.extend(cat_ings)
 
-            if set(recipe_ingredients).issubset(set(selected_ingredients)):
-                found_recipes.append(recipe)
+            # Получаем множество имен продуктов, которые нужны для рецепта
+            required_names = set([item["name"] for item in required_items])
+
+            # Математика множеств: вычитаем из нужных то, что есть у пользователя
+            missing_names = required_names - selected_names
+
+            # ГЛАВНОЕ ПРАВИЛО: Разрешаем нехватку не более 2-х ингредиентов
+            if len(missing_names) <= 2:
+                # Делаем поверхностную копию рецепта, чтобы временно добавить туда список недостающего
+                recipe_copy = recipe.copy()
+                # Вытаскиваем полные данные (граммы, штуки) только для недостающих продуктов
+                recipe_copy["missing_details"] = [item for item in required_items if item["name"] in missing_names]
+                found_recipes.append(recipe_copy)
 
         if found_recipes:
+            # Сортируем выдачу: рецепты, где хватает ВСЕГО (0 недостающих), будут на самом верху!
+            found_recipes.sort(key=lambda r: len(r.get("missing_details", [])))
             show_results_window(found_recipes)
         else:
-            messagebox.showinfo("Нет совпадений", "Из этих продуктов не получится собрать полный рецепт. \nДобавьте еще ингредиентов!")
+            messagebox.showwarning("Нет совпадений", "Даже с учетом докупки 1-2 продуктов мы ничего не нашли.\nВыберите больше ингредиентов!")
 
     current_category = categories[0]
     ingredients_to_show = get_ingredients_by_category(current_category)
@@ -334,8 +426,12 @@ def create_app():
 
     lbl_counter = tk.Label(bottom_panel, text="Выбрано ингредиентов: 0", bg="#e0e0e0", font=("Arial", 12, "bold"))
     lbl_counter.pack(side="left", padx=20)
+    btn_reset = tk.Button(bottom_panel, text="Сбросить всё", font=("Arial", 10),bg="#FF9800", fg="white", command=reset_all)
+    btn_reset.pack(side="left", padx=(0, 10))
     btn_add_recipe = tk.Button(bottom_panel, text="Добавить рецепт", font=("Arial", 11),bg="#9E9E9E", fg="white", width=15, command=open_add_recipe_window)
     btn_add_recipe.pack(side="left", padx=10)
+    btn_del_recipe = tk.Button(bottom_panel, text="Удалить рецепт", font=("Arial", 11),bg="#E53935", fg="white", width=15, command=open_delete_recipe_window)
+    btn_del_recipe.pack(side="left", padx=5)
     btn_search = tk.Button(bottom_panel, text="Найти рецепты", font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", width=15, command=find_recipes)
     btn_search.pack(side="right", padx=20)
 
